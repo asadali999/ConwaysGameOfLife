@@ -10,9 +10,9 @@ FILE* output;
 time_t start;
 time_t end;
 
-int r = 0, c = 0, genNum = 0, size = 0, *board;
+int r = 0, c = 0, genNum = 0, size = 0, * board;
 
-#define ThreadsNum 1
+#define ThreadsNum 10
 
 void inputFunc(char* file_name)
 {
@@ -31,13 +31,13 @@ void inputFunc(char* file_name)
     int readChar = 0;
     int point = 0;
 
-    do 
+    do
     {
         readChar = fgetc(read);
-        if (EOF != readChar) 
+        if (EOF != readChar)
         {
             // Ignore whitsespace in reading in the string
-            if (!isspace(readChar)) 
+            if (!isspace(readChar))
             {
                 if ('*' == readChar)
                 {
@@ -48,7 +48,7 @@ void inputFunc(char* file_name)
                 {
                     board[point] = 0;
                     point = point + 1;
-                }                
+                }
             }
         }
     } while (EOF != readChar);
@@ -62,41 +62,102 @@ void inputFunc(char* file_name)
     }
 }
 
+
+void ViewBoard(FILE* output)
+{
+    for (int i = 0; i < size; ++i)
+    {
+        if (((i % columns) == 0) ^ (i == 0))
+        {
+	        printf(output, "\n");
+        }
+        printf(output, "%c", (board[i] == 0 ? '.' : '*'));
+    }
+}
+
 void Boardd(void)
 {
     memcpy(board, copy, size * sizeof(int));
 }
 
+void* threading(void* arguments)
+{
+    thread_param_t* real;
+    real = (thread_param_t*)arguments;
+    int value = 0;
+
+    for (int a = 0; a < generations; ++a)
+    {
+        processGeneration(real);
+
+        value = cyclic_barrier_await(real->barrier);
+    }
+
+    return NULL;
+}
+
+void BoardNotes(void)
+{
+    memcpy(board, copy, size * sizeof(int));
+}
+
+
 int main(int argc, char** argv)
 {
-   inputFunc(argv[1]);
-   
-   copy = malloc(sizeof(int) * size);
+    inputFunc(argv[1]);
 
-   memcpy(copy, board, size * sizeof(int));
+    copy = malloc(sizeof(int) * size);
 
-   pthread_t* threads;
-   thread_param_t* param;
-    
-  
+    memcpy(copy, board, size * sizeof(int));
+
+    pthread_t* threads;
+    thread_param_t* param;
+    cyclic_barrier_t barrier;
+
 
     threads = malloc(ThreadsNum * sizeof(pthread_t));
     param = malloc(ThreadsNum * sizeof(thread_param_t));
 
     splitBoard(param, ThreadsNum, r, c);
-    
+    cyclic_barrier_init(&barrier, NULL, NULL, NUMBER_OF_THREADS, BoardNotes);
+
+    for (index = 0; index < NUMBER_OF_THREADS; index++) 
+    {
+        parameters[index].barrier = &barrier;
+        pthread_create(&threads[index], NULL, threading, &parameters[index]);
+    }
+
     start = clock();
 
-    for (i = 0; i < ThreadsNum; i++) 
+    for (i = 0; i < ThreadsNum; i++)
     {
         pthread_join(threads[i], NULL);
     }
 
-    end = clock();
-
+    printf("Runtime was %.6f\n", ((double)(end-start)) / 1.0E6);
     
+    if(1 < argc)
+    {
+        output = fopen(argv[2], "w");
+    }
+    else
+    {
+       output = stdout;
+    }
+    
+    ViewBoard(output);
+    
+    if(output != stdout)
+    {
+	fclose(output);
+    }
+
+    cyclic_barrier_destroy(&barrier);
+
+    free(board);
+    free(copy);
+    free(parameters);
     free(threads);
-    free(param);
 
     return 0;
 }
